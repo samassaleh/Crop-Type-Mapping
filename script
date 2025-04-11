@@ -1,0 +1,438 @@
+/ / / * * * * * * * l a n d s a t 8 s u r f a c e	r e f l e c t a n c e * * * / / / /
+f u n c t i o n  mask L 8 sr ( image )  {
+/ /	B i t s  3 and 5  a r e  c l o u d  shadow  and  cloud ,	r e s p e c t i v e l y .
+v a r cloud Shadow Bit Mask = ( 1 << 3 ) ; v a r c l ouds Bit Mask = ( 1 << 5 ) ;
+/ /  Get  t h e  p i x e l QA band .
+v a r  qa = image . s e l e c t ( ’ QA PIXEL ’ ) ;
+/ / Both f l a g s s h o u l d be s e t t o zero ,	i n d i c a t i n g	c l e a r	c o n d i t i o n s . v a r mask = qa . b i t w i s e A n d ( cloud Shadow Bit Mask ) . eq ( 0 )
+. and ( qa . b i t w i s e A n d ( c l ouds Bit Mask ) . eq ( 0 ) ) ; r e t u r n image . update Mask ( mask )
+. c o p y P r o p e r t i e s ( image ,  [ ’ system : t i m e s t a r t ’ ] ) ;
+}
+/ / g e n e r a l	c o l l e c t i o n
+v a r	l 8 c o l l e c t i o n = ee . I m a g e C o l l e c t i o n ( ”LANDSAT/ LC08 / C02 / T1 L2 ” ) / /
+. f i l t e r B o u n d s ( D e l t a )
+/ / . map ( mask L 8 sr )
+/ /	F u n c t i o n t o add an NDVI band ,	t h e d e p e n d e n t  v a r i a b l e . v a r addVI = f u n c t i o n ( image ) {
+v a r  ndvi = image . n o r m a l i z e d D i f f e r e n c e ( [ ’ n i r ’ ,	’ red ’ ] ) . rename ( ’ NDVI ’ ) . f l o a t ( ) ;
+v a r ndwi = image . n o r m a l i z e d D i f f e r e n c e ( [ ’ green ’ ,	’ n i r ’ ] ) . rename ( ’NDWI’ ) ;
+v a r  l s w i = image . n o r m a l i z e d D i f f e r e n c e ( [ ’ n i r ’ ,	’ swir 1 ’ ] ) . rename ( ’ LSWI ’ ) . f l o a t (
+/ / Compute t h e EVI u s i n g an e x p r e s s i o n . v a r g c v i = image . e x p r e s s i o n (
+’ ( NIR / GREEN) − 1 ’ ,  {
+’ NIR ’ :  image . s e l e c t ( ’ n i r ’ ) ,
+’GREEN’ :  image . s e l e c t ( ’ green ’ ) ,
+} ) . rename ( ’ GCVI ’ ) . f l o a t ( ) ;
+/ /	Re t u rn  t h e  masked image ,  with  a d d i t i o n a l  bands  f o r	p r e d i c t o r s .
+r e t u r n  image
+/ / Add  t h e  r e s p o n s e	v a r i a b l e s	l a s t .
+. add Bands ( [ ndvi , ndwi , gcvi , l s w i ] )
+ 
+/ /	R e t a i n	t h i s	m e t a d a t a  p r o p e r t y  f o r  use  i n  t h e  c h a r t .
+. c o p y P r o p e r t i e s ( image ,  [ ’ system : t i m e s t a r t ’ ] ) ;
+} ;
+f u n c t i o n  renameL8 ( img ) {
+r e t u r n  img . rename ( [ ’ AEROS’ ,	’ blue ’ ,	’ green ’ ,	’ red ’ ,	’ n i r ’ ,
+’ swir 1 ’ ,
+’ swir 2 ’ ,		’TEMP1 ’ ,	’QA AEROSOL’ ,	’ATRAN’ ,	’ CDIST ’ , ’DRAD’ ,	’ EMIS ’ ,
+’EMSD’ ,	’QA’ ,	’TRAD’ ,	’URAD’ ,	’ QA PIXEL ’ ,	’QA RADSAT’
+] ) ;
+}
+v a r	l 8 c o l l e c t i o n = l 8 c o l l e c t i o n . map ( renameL8 )
+. s e l e c t ( [ ’ blue ’ , ’ green ’ , ’ red ’ , ’ n i r ’ , ’ swir 1 ’ , ’ swir 2 ’ ] )
+. map ( addVI ) ;
+
+v a r  d a t e s = [
+ee . Date Range ( ’ 2017 −05 −01 ’ ,  ’ 2017 −06 −01 ’) ,
+ee . Date Range ( ’ 2017 −06 −01 ’ ,  ’ 2017 −07 −01 ’) ,
+ee . Date Range ( ’ 2017 −07 −01 ’ ,  ’ 2017 −08 −01 ’) ,
+ee . Date Range ( ’ 2017 −08 −01 ’ ,  ’ 2017 −09 −01 ’) ,
+ee . Date Range ( ’ 2017 −09 −01 ’ ,  ’ 2017 −10 −01 ’) ,
+ee . Date Range ( ’ 2017 −10 −01 ’ ,  ’ 2017 −11 −01 ’) ,
+
+
+
+] ;
+
+
+v a r  l 8 = ee . I m a g e C o l l e c t i o n ( d a t e s . map ( f u n c t i o n ( date Range )  {
+r e t u r n	l 8 c o l l e c t i o n . f i l t e r ( ee . F i l t e r . d a t e (
+date Range . s t a r t ( ) . f o r m a t ( ’ yyyy −MM−dd ’ ) , date Range . end ( ) . f o r m a t ( ’ yyyy −MM−dd ’ )
+) ) . median ( ) ;
+} ) ) ;
+v a r  s t a c k e d = l 8 . to Bands ( ) . c l i p ( D e l t a ) ;
+
+
+/ / / / / / / / / / / / / / / / / / / /	T r a i n i n g D a t a	/ / / / / / / / / / / /
+ 
+
+v a r  p o i n t s 1 = o t h e r S u m C r o p s T i f f 1 7 . s t r a t i f i e d S a m p l e ( {
+r e g i o n :  Study Area 17 ,
+s c a l e :  30 ,
+g e o m e t r i e s :  t r u e , num Points : 100
+} ) ;
+v a r  p o i n t s 2 = m a i z e 1 7 t i f f . s t r a t i f i e d S a m p l e ( {
+r e g i o n :  Study Area 17 ,
+s c a l e :  30 ,
+g e o m e t r i e s :  t r u e , num Points : 10050
+} ) ;
+v a r  p o i n t s 3 = r i c e 1 7  t i f f . s t r a t i f i e d S a m p l e ( {
+r e g i o n :  Study Area 17 ,
+s c a l e :  30 ,
+g e o m e t r i e s :  t r u e , num Points : 8000
+} ) ;
+/ /	C a l c u l a t e NDVI f o r  p o i n t s 1
+v a r points 1 With NDVI = p o i n t s 1 . l i m i t ( 1 0 0 0 0 ) . map ( f u n c t i o n ( p o i n t )  {
+v a r  image = l 8 c o l l e c t i o n
+. f i l t e r D a t e ( ’ 2017 −05 −01 ’ ,  ’2017 −11 −01 ’)
+. mean ( ) ;	/ /	C a l c u l a t e  mean  c o m p o s i t e  f o r  t h e  d e s i r e d  d a t e  r a n g e
+v a r ndvi Value = image . n o r m a l i z e d D i f f e r e n c e ( [ ’ n i r ’ ,	’ red ’ ] ) . rename ( ’ NDVI ’ ) ; v a r pointNDVI = ee . Image ( ndvi Value ) . r e d u c e R e g i o n ( {
+r e d u c e r :  ee . Reducer . f i r s t ( ) ,
+geometry :	p o i n t . geometry ( ) , s c a l e : 30 ,
+b e s t E f f o r t :	t r u e
+} ) . g e t ( ’ NDVI ’ ) ;
+r e t u r n	p o i n t . s e t ( ’ NDVI’ ,  pointNDVI ) ;
+} ) ;
+/ /	C a l c u l a t e NDVI f o r  p o i n t s 2
+v a r points 2 With NDVI = p o i n t s 2 . l i m i t ( 1 0 0 0 0 ) . map ( f u n c t i o n ( p o i n t )  {
+v a r  image = l 8 c o l l e c t i o n
+. f i l t e r D a t e ( ’ 2017 −06 −01 ’ ,  ’2017 −08 −01 ’)
+. mean ( ) ;	/ /	C a l c u l a t e  mean  c o m p o s i t e  f o r  t h e  d e s i r e d  d a t e  r a n g e
+v a r  ndvi Value = image . n o r m a l i z e d D i f f e r e n c e ( [ ’ n i r ’ ,	’ red ’ ] ) . rename ( ’ NDVI ’ ) ;
+ 
+v a r pointNDVI = ee . Image ( ndvi Value ) . r e d u c e R e g i o n ( { r e d u c e r : ee . Reducer . f i r s t ( ) ,
+geometry :	p o i n t . geometry ( ) , s c a l e : 30 ,
+b e s t E f f o r t :	t r u e
+} ) . g e t ( ’ NDVI ’ ) ;
+r e t u r n	p o i n t . s e t ( ’ NDVI’ ,  pointNDVI ) ;
+} ) ;
+/ /	C a l c u l a t e NDVI f o r  p o i n t s 3
+v a r points 3 With NDVI = p o i n t s 3 . l i m i t ( 1 0 0 0 0 ) . map ( f u n c t i o n ( p o i n t )  {
+v a r  image = l 8 c o l l e c t i o n
+. f i l t e r D a t e ( ’ 2017 −08 −01 ’ ,  ’2017 −11 −01 ’)
+. mean ( ) ;	/ /	C a l c u l a t e  mean  c o m p o s i t e  f o r  t h e  d e s i r e d  d a t e  r a n g e
+v a r ndvi Value = image . n o r m a l i z e d D i f f e r e n c e ( [ ’ n i r ’ ,	’ red ’ ] ) . rename ( ’ NDVI ’ ) ; v a r pointNDVI = ee . Image ( ndvi Value ) . r e d u c e R e g i o n ( {
+r e d u c e r :  ee . Reducer . f i r s t ( ) ,
+geometry :	p o i n t . geometry ( ) , s c a l e : 30 ,
+b e s t E f f o r t :	t r u e
+} ) . g e t ( ’ NDVI ’ ) ;
+r e t u r n	p o i n t . s e t ( ’ NDVI’ ,  pointNDVI ) ;
+} ) ;
+/ /	F i l t e r	p o i n t s	c l o s e  t o  t h e  mean NDVI v a l u e
+v a r meanNDVI1 = ee . Number ( points 1 With NDVI . a g g r e g a t e m e a n ( ’ NDVI ’ ) ) ; v a r t h r e s h o l d 1 = 0 . 1 ;
+v a r	f i l t e r e d P o i n t s 1 = points 1 With NDVI . f i l t e r ( ee . F i l t e r . and ( ee . F i l t e r . g t e ( ’ NDVI’ , meanNDVI1 . s u b t r a c t ( t h r e s h o l d 1 ) ) ,
+ee . F i l t e r . l t e ( ’ NDVI’ ,  meanNDVI1 . add ( t h r e s h o l d 1 ) )
+) ) ;
+
+/ / p r i n t ( meanNDVI1 , ’ 1 ’ )
+
+v a r meanNDVI2 = ee . Number ( points 2 With NDVI . a g g r e g a t e m e a n ( ’ NDVI ’ ) ) ; v a r t h r e s h o l d 2 =	0 . 0 1 ;
+v a r	f i l t e r e d P o i n t s 2 = points 2 With NDVI . f i l t e r ( ee . F i l t e r . and ( ee . F i l t e r . g t e ( ’ NDVI’ , meanNDVI2 . s u b t r a c t ( t h r e s h o l d 2 ) ) ,
+ee . F i l t e r . l t e ( ’ NDVI’ ,  meanNDVI2 . add ( t h r e s h o l d 2 ) )
+) ) ;
+/ / p r i n t ( meanNDVI2 , ’ 2 ’ )
+ 
+v a r meanNDVI3 = ee . Number ( points 3 With NDVI . a g g r e g a t e m e a n ( ’ NDVI ’ ) ) ; v a r t h r e s h o l d 3 = 0 . 0 2 ;
+v a r	f i l t e r e d P o i n t s 3 = points 3 With NDVI . f i l t e r ( ee . F i l t e r . and ( ee . F i l t e r . g t e ( ’ NDVI’ , meanNDVI3 . s u b t r a c t ( t h r e s h o l d 3 ) ) ,
+ee . F i l t e r . l t e ( ’ NDVI’ ,  meanNDVI3 . add ( t h r e s h o l d 3 ) )
+) ) ;
+/ / p r i n t ( meanNDVI3 , ’ 3 ’ )
+
+v a r  r e f e r e n c e D a t a = ee . Image ( ) . b y t e ( )
+. p a i n t ( f i l t e r e d P o i n t s 1 ,  0 )
+. p a i n t ( f i l t e r e d P o i n t s 2 ,  1 )
+. p a i n t ( f i l t e r e d P o i n t s 3 , 2 )
+
+v a r	t r a i n i n g = s t a c k e d . f l o a t ( ) . add Bands ( r e f e r e n c e D a t a ) . s t r a t i f i e d S a m p l e ( { num Points : 0 ,
+c l a s s B a n d :  ” c o n s t a n t ” ,
+r e g i o n :  Study Area 17 ,
+s c a l e :  30 ,
+p r o j e c t i o n :  s t a c k e d . s e l e c t ( 0 ) . p r o j e c t i o n ( ) , c l a s s V a l u e s :	[ 0 , 1 , 2 ] ,
+c l a s s P o i n t s :  [ 5 0 0 0 , 5 0 0 0 , 5 0 0 0 ]
+} ) ;
+/ /	/ /	/ /	/ /	/ /	F i l t e r	o u t t h e n u l l	p r o p e r t y  v a l u e s and t r y  a g a i n . v a r sample= t r a i n i n g . randomColumn ( ) ;
+v a r	s p l i t = 0 . 7
+v a r  t r a i n i n g s a m p l e =sample . f i l t e r ( ee . F i l t e r . l t ( ’ random ’ , s p l i t ) ) ;
+v a r  v a l i d a t i o n s a m p l e =sample . f i l t e r ( ee . F i l t e r . g t e ( ’ random ’ , s p l i t ) ) ;
+
+v a r		c l a s s i f i e r = ee . C l a s s i f i e r . smile Random Forest ( { number Of Trees : 128 ,
+m i n L e a f P o p u l a t i o n : 1
+} )
+. t r a i n ( {
+f e a t u r e s :	t r a i n i n g s a m p l e ,
+c l a s s P r o p e r t y : ’ c o n s t a n t ’ ,
+i n p u t P r o p e r t i e s :  s t a c k e d . bandNames ( ) ,
+} )
+
+v a r	c l a s s i f i e d  = s t a c k e d . c l a s s i f y ( c l a s s i f i e r ,	’ C l a s s i f i e d ’ ) ;
+ 
+
+Map . add Layer ( c l a s s i f i e d , { min :  0 , max :  2 ,  p a l e t t e :  [ ’ gray ’ ,	’ green ’ , ’ pink ’ ] } , ’ c l
+
+/ /	/ /	/ /	C l a s s i f y  t h e	v a l i d a t i o n	d a t a .
+v a r  v a l i d a t e d = v a l i d a t i o n s a m p l e . c l a s s i f y ( c l a s s i f i e r ) ;
+
+/ / v a r t e s t A c c u r a c y = v a l i d a t e d . e r r o r M a t r i x ( ’ c l a s s ’ ,	’ c l a s s i f i c a t i o n ’ ) ; v a r  t e s t A c c u r a c y = v a l i d a t e d . e r r o r M a t r i x ( ’ c o n s t a n t ’ ,		’ c l a s s i f i c a t i o n ’ ) ; p r i n t ( ’ T e s t  o v e r a l l  a c c u r a c y :	’ , t e s t A c c u r a c y . a c c u r a c y ( ) ) ;
+p r i n t ( ’ T e s t  kappa  a c c u r a c y :	’ ,  t e s t A c c u r a c y . kappa ( ) ) ;
+p r i n t ( ’ T e s t p r o d u c e r a c c u r a c y : ’ ,  t e s t A c c u r a c y . p r o d u c e r s A c c u r a c y ( ) ) ; p r i n t ( ’ T e s t Consumer a c c u r a c y :  ’ ,  t e s t A c c u r a c y . consumers Accuracy ( ) ) ; p r i n t ( ’ R e s u b s t i t u t i o n  e r r o r  m a t r i x :  ’ ,  t e s t A c c u r a c y ) ;
+/ /  / / / / / / / / / / / / / / / / / / / /
+/ /	Ex po r t . image . t o D r i v e ( {
+/ /	image :	c l a s s i f i e d ,
+/ /	d e s c r i p t i o n :	’ c l a s s i f i e d S u m m e r 2 0 1 7 ’ ,
+/ /	s c a l e :  30 ,
+/ /	/ / c r s :	’ epsg : 4 3 2 6 ’ ,
+/ /	r e g i o n :  Delta ,
+/ /	max Pixels :  1 e13
+/ /	} ) ;
+/ /  / /  / /  / /  / / / / / / / / / / /  T o t a l  Area  C a l c u l a t i o n / / / / / / / / / / /
+/ /	D e f i n e t h e  c o n v e r s i o n	f a c t o r from h e c t a r e s t o Fadan v a r h e c t a r e s T o F a d a n = 0 . 4 2 0 ;
+
+/ /	C a l c u l a t e  t h e  a r e a  of  each  c rop  c l a s s
+v a r  a r e a R i c e = c l a s s i f i e d . eq ( 2 ) . m u l t i p l y ( ee . Image . p i x e l A r e a ( ) ) . d i v i d e ( 1 0 0 0 0 ) ; v a r  a r ea Maize = c l a s s i f i e d . eq ( 1 ) . m u l t i p l y ( ee . Image . p i x e l A r e a ( ) ) . d i v i d e ( 1 0 0 0 0 ) ;
+
+/ /	C a l c u l a t e  t h e	t o t a l	a r e a  of  each  c rop
+v a r  t o t a l A r e a R i c e = ee . Number ( a r e a R i c e . r e d u c e R e g i o n ( { r e d u c e r : ee . Reducer . sum ( ) ,
+geometry : Delta , s c a l e : 30 ,
+max Pixels :  1 e12
+} ) . v a l u e s ( ) . g e t ( 0 ) ) ;
+v a r  t o t a l A r e a M a i z e = ee . Number ( a r ea Maize . r e d u c e R e g i o n ( {
+ 
+r e d u c e r : ee . Reducer . sum ( ) , geometry : Delta ,
+s c a l e :  30 ,
+max Pixels :  1 e12
+} ) . v a l u e s ( ) . g e t ( 0 ) ) ;
+
+/ / Convert  t h e  a r e a  t o  Fadan
+v a r t o t a l A r e a R i c e F a d a n = t o t a l A r e a R i c e . d i v i d e ( h e c t a r e s T o F a d a n ) ;
+v a r t o t a l A r e a M a i z e F a d a n = t o t a l A r e a M a i z e . d i v i d e ( h e c t a r e s T o F a d a n ) ;
+
+/ / P r i n t	t h e	t o t a l	a r e a  of  each  c rop  i n  Fadan
+p r i n t ( ’ T o t a l  a r e a  of  r i c e  ( i n  Fadan ) : ’ ,	t o t a l A r e a R i c e F a d a n ) ;
+p r i n t ( ’ T o t a l  a r e a  of  maize  ( i n  Fadan ) : ’ ,  t o t a l A r e a M a i z e F a d a n ) ;
+/ / / / / / / / / / / / / / / /
+/ /	/ / / / / / / / / / / / / / / / / r i c e A r e a / / / /
+v a r  h e c t a r e s T o F a d a n = 0 . 4 2 0 ;
+/ /	L i s t of g o v e r n o r a t e names v a r governorate Names = [
+’ Al  Buhayrah ’ ,
+’ Al I s k a n d a r i y a h ’ , ’ Al Isma ‘ i l i y a h ’ ,
+’ Al  Minufiyah ’ ,
+’ Ash Sharqiyah ’ , ’ Bur Said ’ ,
+’ Dumyat ’ ,
+’Ad Daqahliyah ’ , ’ Al Qalyubiyah ’ , ’ Al Gharbiyah ’ ,
+’ Kafr  ash  Shaykh ’ ,
+] ;
+
+/ /	C r e a t e an empty	l i s t	t o  s t o r e	r e s u l t s v a r		r e s u l t s = [ ] ;
+
+/ /	F u n c t i o n t o	c a l c u l a t e  c rop  a r e a s  f o r  a g i v e n  geometry f u n c t i o n  c a l c u l a t e C r o p A r e a s ( geometry )  {
+v a r  a r e a r i c e  = c l a s s i f i e d . eq ( 2 ) . m u l t i p l y ( ee . Image . p i x e l A r e a ( ) ) . d i v i d e ( 1 0 0 0 0 ) ;
+
+v a r  t o t a l A r e a r i c e = ee . Number ( a r e a r i c e . r e d u c e R e g i o n ( { r e d u c e r : ee . Reducer . sum ( ) ,
+ 
+geometry : geometry , s c a l e : 30 ,
+max Pixels :  1 e12
+} ) . v a l u e s ( ) . g e t ( 0 ) ) ;
+v a r t o t a l A r e a r i c e F a d a n = t o t a l A r e a r i c e . d i v i d e ( h e c t a r e s T o F a d a n ) ;
+
+r e t u r n	t o t a l A r e a r i c e F a d a n ;
+}
+/ / Loop t h r o u g h g o v e r n o r a t e names and c a l c u l a t e	r e s u l t s governorate Names . f o r E a c h ( f u n c t i o n ( governorate Name ) {
+v a r  g o v e r n o r a t e F e a t u r e s = adm1 . f i l t e r ( ee . F i l t e r . eq ( ’ NAME 1 ’ ,  governorate Name )
+
+i f	( g o v e r n o r a t e F e a t u r e s . s i z e ( ) . g t ( 0 ) )  {
+v a r g o v e r n o r a t e G e o m e t r y = g o v e r n o r a t e F e a t u r e s . geometry ( ) ;
+v a r t o t a l A r e a r i c e F a d a n = c a l c u l a t e C r o p A r e a s ( g o v e r n o r a t e G e o m e t r y ) ;
+
+/ / Add r e s u l t	t o t h e	l i s t r e s u l t s . push ( {
+’ Governorate ’ :  governorate Name ,
+’ T o t a l  a r e a  of  r i c e  ( i n  Fadan ) ’ :	t o t a l A r e a r i c e F a d a n
+} ) ;
+}  e l s e  {
+r e s u l t s . push ( {
+’ Governorate ’ :  governorate Name ,
+’ T o t a l  a r e a  of  r i c e  ( i n  Fadan ) ’ :	’ Not  found ’
+} ) ;
+}
+} ) ;
+/ /	Convert  t h e	r e s u l t s	t o  a  f e a t u r e	c o l l e c t i o n
+v a r  r e s u l t s F C R i c e = ee . F e a t u r e C o l l e c t i o n ( r e s u l t s . map ( f u n c t i o n ( r e s u l t )  {
+r e t u r n  ee . F e a t u r e ( n u l l ,	r e s u l t ) ;
+} ) ) ;
+/ /	Ex po r t t h e	r e s u l t s	t o a CSV f i l e Ex po r t . t a b l e . t o D r i v e ( {
+c o l l e c t i o n :  r e s u l t s F C R i c e ,
+d e s c r i p t i o n :	’ r i c e a r e a 1 7 ’ , f i l e F o r m a t :	’CSV’
+ 
+} ) ;
+p r i n t ( r e s u l t s F C R i c e )
+
+/ /	/ / / / / / / / / / / / / / / / / Maize Area / / / /
+v a r  h e c t a r e s T o F a d a n = 0 . 4 2 0 ;
+/ /	L i s t of g o v e r n o r a t e names v a r governorate Names = [
+’ Al  Buhayrah ’ ,
+’ Al I s k a n d a r i y a h ’ , ’ Al Isma ‘ i l i y a h ’ ,
+’ Al  Minufiyah ’ ,
+’ Ash Sharqiyah ’ , ’ Bur Said ’ ,
+’ Dumyat ’ ,
+’Ad Daqahliyah ’ , ’ Al Qalyubiyah ’ , ’ Al Gharbiyah ’ ,
+’ Kafr  ash  Shaykh ’ ,
+] ;
+
+/ /	C r e a t e an empty	l i s t	t o  s t o r e	r e s u l t s v a r		r e s u l t s = [ ] ;
+
+/ /	F u n c t i o n t o	c a l c u l a t e  c rop  a r e a s  f o r  a g i v e n  geometry f u n c t i o n  c a l c u l a t e C r o p A r e a s ( geometry )  {
+v a r  a r e a m a i z e = c l a s s i f i e d . eq ( 1 ) . m u l t i p l y ( ee . Image . p i x e l A r e a ( ) ) . d i v i d e ( 1 0 0 0 0 )
+
+v a r  t o t a l A r e a m a i z e = ee . Number ( a r e a m a i z e . r e d u c e R e g i o n ( { r e d u c e r : ee . Reducer . sum ( ) ,
+geometry : geometry , s c a l e : 30 ,
+max Pixels :  1 e12
+} ) . v a l u e s ( ) . g e t ( 0 ) ) ;
+v a r t o t a l A r e a m a i z e F a d a n = t o t a l A r e a m a i z e . d i v i d e ( h e c t a r e s T o F a d a n ) ;
+
+r e t u r n  t o t a l A r e a m a i z e F a d a n ;
+}
+/ / Loop t h r o u g h g o v e r n o r a t e names and c a l c u l a t e	r e s u l t s governorate Names . f o r E a c h ( f u n c t i o n ( governorate Name ) {
+ 
+v a r  g o v e r n o r a t e F e a t u r e s = adm1 . f i l t e r ( ee . F i l t e r . eq ( ’ NAME 1 ’ ,  governorate Name )
+
+i f	( g o v e r n o r a t e F e a t u r e s . s i z e ( ) . g t ( 0 ) )  {
+v a r g o v e r n o r a t e G e o m e t r y = g o v e r n o r a t e F e a t u r e s . geometry ( ) ;
+v a r t o t a l A r e a m a i z e F a d a n = c a l c u l a t e C r o p A r e a s ( g o v e r n o r a t e G e o m e t r y ) ;
+
+/ / Add r e s u l t	t o t h e	l i s t r e s u l t s . push ( {
+’ Governorate ’ :  governorate Name ,
+’ T o t a l  a r e a  of  whear  ( i n  Fadan ) ’ :  t o t a l A r e a m a i z e F a d a n
+} ) ;
+}  e l s e  {
+r e s u l t s . push ( {
+’ Governorate ’ :  governorate Name ,
+’ T o t a l  a r e a  of  maize  ( i n  Fadan ) ’ :	’ Not  found ’
+} ) ;
+}
+} ) ;
+/ /	Convert  t h e	r e s u l t s	t o  a  f e a t u r e	c o l l e c t i o n
+v a r  r e s u l t s F C = ee . F e a t u r e C o l l e c t i o n ( r e s u l t s . map ( f u n c t i o n ( r e s u l t )  {
+r e t u r n  ee . F e a t u r e ( n u l l ,	r e s u l t ) ;
+} ) ) ;
+/ /	Ex po r t t h e	r e s u l t s	t o a CSV f i l e Ex po r t . t a b l e . t o D r i v e ( {
+c o l l e c t i o n :  r e s u l t s F C ,
+d e s c r i p t i o n :	’ m a i z e a r e a 1 7 ’ , f i l e F o r m a t :	’CSV’
+} ) ;
+/ / p r i n t ( r e s u l t s F C )
+
+
+/ /	/ / / / / / / / / / / / / / I r r i g a t i o n	I n d i c a t o r s / / / / / / / / / / / / / / / / / / /
+
+/ /	/ / / / / / / / / / ! ! ET0 WAPOR / / / / / / / / / / / / / / /
+/ /	C r e a t e  a  mask  u s i n g  t h e	c l a s s i f i e d  image
+/ / v a r mask = c l a s s i f i e d . eq ( 1 ) . or ( c l a s s i f i e d . eq ( 2 ) ) ; v a r mask = c l a s s i f i e d . eq ( 2 ) ;
+v a r  sumET0 = ET0 1705 . add ( ET0 1706 ) . add ( ET0 1707 ) . add ( ET0 1708 ) . add ( ET0 1709 ) . ad
+v a r  t a r g e t S c a l e  = 3 0 ;
+ 
+
+v a r resampled ET 0 = sumET0 . r e s a m p l e ( ) . r e p r o j e c t ( { c r s : sumET0 . p r o j e c t i o n ( ) ,
+s c a l e :	t a r g e t S c a l e
+} ) ;
+/ /	c l a s s i f i e d G e o = c l a s s i f i e d . geometry ( ) ;
+v a r  f a c t o r  = 0 . 1 ;
+v a r  seasonal ET 0 sum 17 = resampled ET 0 . update Mask ( mask ) . m u l t i p l y ( f a c t o r ) ; v a r modified Image = c l a s s i f i e d
+/ / . where ( c l a s s i f i e d . eq ( 1 ) ,	0 . 7 6 ) ;
+. where ( c l a s s i f i e d . eq ( 2 ) ,	1 . 4 3 ) ;
+/ / / p o t e n t i a l  =ET0 . KC
+v a r Pot summ17 = seasonal ET 0 sum 17 . m u l t i p l y ( modified Image ) ; Map . add Layer ( Pot summ17 ,	{ } ,	’ Pot summ17 ’ , f a l s e ) ;
+
+/ /	/ / / / / / / / / / / / / / / / / / / / ! ! ! AET wapor / / / / / / / / /
+v a r  AETWap sum17 = AET1705 . add ( AET1706 ) . add ( AET1707 ) . add ( AET1708 ) . add ( AET1709 ) .
+v a r seasonaSummlWap17 = AETWap sum17 . r e s a m p l e ( ) . r e p r o j e c t ( { c r s : AETWap sum17 . p r o j e c t i o n ( ) ,
+s c a l e :	t a r g e t S c a l e
+} ) ;
+v a r  f a c t o r  = 0 . 1 ;
+v a r seasonalAETWap sum17 = seasonaSummlWap17 . m u l t i p l y ( f a c t o r ) ;
+/ / Map . add Layer ( seasonalAETWap sum17 ,	{ } ,	’ seasonalAETWap sum17 ’ , f a l s e ) ;
+
+/ /	/ /	/ / / / / / / / / / / / / / / SSEBop , c l i p  and  change  t h e  s c a l e / / / / / / / /
+v a r AETBop sum17=Bop1705 . add ( Bop1706 ) . add ( Bop1707 ) . add ( Bop1708 ) . add ( Bop1709 ) . add v a r seasonaSummlBop17 = AETBop sum17 . r e s a m p l e ( ) . r e p r o j e c t ( {
+c r s :  AETBop sum17 . p r o j e c t i o n ( ) ,
+s c a l e :	t a r g e t S c a l e
+} ) ;
+/ /	/ /	/ /	C a l c u l a t e  t h e  a v e r a g e	r a s t e r
+v a r  ensembleAET = seasonaSummlBop17 . add ( seasonalAETWap sum17 ) . d i v i d e ( 2 ) ;
+
+/ /	/ /	D i s p l a y  t h e  a v e r a g e	r a s t e r
+Map . add Layer ( ensembleAET ,	{ } ,	’ Average ensembleAET ’ , f a l s e ) ;
+/ /	/ / / / / / / / / / / /	I n d i c a t o r s / / / / / / / / / / /
+ 
+/ /	/ / Di v i de  ensembleAET by  seasonal ET 0 sum 17
+v a r  d i v i d e d R a s t e r = ensembleAET . d i v i d e ( Pot summ17 ) ;
+/ /	/ /  Add  t h e  d i v i d e d	r a s t e r	t o  t h e  map
+Map . add Layer ( d i v i d e d R a s t e r , { } ,	’ Adequacy ’ , f a l s e ) ;
+v a r meanA = d i v i d e d R a s t e r . r e d u c e R e g i o n ( { r e d u c e r : ee . Reducer . mean ( ) ,
+geometry : Delta , s c a l e : 100
+} ) ;
+p r i n t ( meanA , ’ meanA ’ )
+/ /	Ex po r t . image . t o D r i v e ( {
+/ /	image :  d i v i d e d R a s t e r ,
+/ /	d e s c r i p t i o n :	’ AdequacySummer2017 ’ ,
+/ /	s c a l e :  30 ,
+/ /	/ / c r s :	’ epsg : 4 3 2 6 ’ ,
+/ /	r e g i o n :  Delta ,
+/ /	max Pixels :  1 e13
+/ /	} ) ;
+/ / / E q u i t y / / /
+/ / / /  C r e a t e a  c o l l e c t i o n  of  t h e AET r a s t e r s v a r AET1705 = AET1705 . m u l t i p l y ( 0 . 1 ) ;
+v a r AET1706 = AET1706 . m u l t i p l y ( 0 . 1 ) ; v a r AET1707 = AET1707 . m u l t i p l y ( 0 . 1 ) ; v a r AET1708 = AET1708 . m u l t i p l y ( 0 . 1 ) ; v a r AET1709 = AET1709 . m u l t i p l y ( 0 . 1 ) ; v a r  AET1710 = AET1710 . m u l t i p l y ( 0 . 1 ) ;
+
+
+
+
+/ /	/ /	/ /	/ /	C a l c u l a t e  t h e  s t a n d a r d	d e v i a t i o n
+v a r  s td Dev 1 = a e t C o l l e c t i o n 1 . r e d u c e ( ee . Reducer . s td Dev ( ) ) . update Mask ( mask ) ; v a r s td Dev 1 Resample=std Dev 1 . r e s a m p l e ( ) . r e p r o j e c t ( {
+c r s :  ensembleAET . p r o j e c t i o n ( ) ,
+s c a l e :  30
+} ) ;
+v a r  s td Dev 2 = a e t C o l l e c t i o n 2 . r e d u c e ( ee . Reducer . s td Dev ( ) ) . update Mask ( mask ) ; / / . c l i v a r s td Dev 2 Resample=std Dev 2 . r e s a m p l e ( ) . r e p r o j e c t ( {
+c r s :  ensembleAET . p r o j e c t i o n ( ) ,
+ 
+s c a l e :  30
+} ) ;
+/ /	/ /	/ /	/ /	/ /	/ /	C a l c u l a t e  t h e  a v e r a g e  s t d
+v a r  s td Dev = s td Dev 1 . add ( s td Dev 2 ) . d i v i d e ( 2 ) ;
+
+
+/ /	C a l c u l a t e  t h e  mean v a l u e  f o r  t h e  r e g i o n  u s i n g  t h e  r e d u c e R e g i o n  f u n c t i o n . v a r meanAET = ensembleAET . r e d u c e R e g i o n ( {
+r e d u c e r :  ee . Reducer . mean ( ) ,
+geometry :  Delta ,
+s c a l e :  30 ,	/ /	R e s o l u t i o n  i n  m e t e r s
+max Pixels :  1 e13 ,	/ /	S e t  max Pixels  t o  a  h i g h e r  v a l u e
+b e s t E f f o r t :  t r u e ,	/ /  Use  b e s t E f f o r t	t o  a g g r e g a t e  a t  t h e  s c a l e	t h a t	r e s u l t s	i n
+} ) ;
+
+/ /  Get  t h e  mean  v a l u e  from  t h e	d i c t i o n a r y .
+v a r meanValue = meanAET . get Number ( ’ b1 ’ ) ;	/ / Get as a number p r i n t ( meanValue )
+
+/ /	Di v i de each p i x e l of t h e s t a n d a r d	d e v i a t i o n  image by t h e mean v a l u e . v a r  d i v i d e d R a s t e r = s td Dev . d i v i d e ( meanValue ) ;
+
+
+/ /	M u l t i p l y t h e d i v i d e d image by 100 f o r	v i s u a l i z a t i o n . v a r  m u l t i p l i e d R a s t e r = d i v i d e d R a s t e r . m u l t i p l y ( 1 0 0 ) ;
+
+/ /  Add  t h e  m u l t i p l i e d	r a s t e r	t o  t h e  map .
+Map . add Layer ( m u l t i p l i e d R a s t e r ,	{ } ,	’ Equity ’ ) ;
+/ /	Ex po r t . image . t o D r i v e ( {
+/ /	image :	m u l t i p l i e d R a s t e r ,
+/ /	d e s c r i p t i o n :	’ Rice Equity Summer 2017 ’ ,
+/ /	s c a l e :  30 ,
+/ /	/ / c r s :	’ epsg : 4 3 2 6 ’ ,
+/ /	r e g i o n :  Delta ,
+/ /	max Pixels :  1 e13
+/ /	} ) ;
+/ / / / / / / / / / / / R e l i a b i l i t y / / /
+ 
+/ /	C a l c u l a t e  t h e  mean  of  ETa and ETp
+v a r meanETa = ensembleAET . r e d u c e R e g i o n ( { r e d u c e r : ee . Reducer . mean ( ) ,
+geometry : Delta , s c a l e : 100
+} ) ;
+p r i n t ( meanETa ) ;
+v a r meanETp = Pot summ17 . r e d u c e R e g i o n ( { r e d u c e r : ee . Reducer . mean ( ) ,
+geometry : Delta , s c a l e : 100
+} ) ;
+p r i n t ( meanETp ) ;
+
+v a r  ETa ETp = ee . Number ( meanETa . g e t ( ” b1 ” ) ) . d i v i d e ( ee . Number ( meanETp . g e t ( ” b1 ” ) ) ) ; p r i n t ( ” ETa ETp ” , ETa ETp ) ;
+/ / / c a l c u l a t e d  Sd and Cv  f o r	r e l i a b i l i t y	i n d i c a t o r  done  i n  e x c e l	f i l e / / /
